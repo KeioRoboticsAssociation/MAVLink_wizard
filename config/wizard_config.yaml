@@ -1,0 +1,163 @@
+# MAVLink Wizard Configuration File
+
+# Serial Communication Settings
+serial:
+  default_port: "/dev/ttyUSB0"
+  default_baud_rate: 115200
+  available_ports:
+    - "/dev/ttyUSB0"
+    - "/dev/ttyUSB1"
+    - "/dev/ttyACM0"
+    - "/dev/ttyACM1"
+  available_baud_rates:
+    - 9600
+    - 19200
+    - 38400
+    - 57600
+    - 115200
+    - 230400
+    - 460800
+    - 921600
+
+# Device Discovery Settings
+discovery:
+  scan_timeout: 5.0          # seconds
+  heartbeat_interval: 1.0    # seconds
+  device_timeout: 10.0       # seconds before marking device as lost
+  auto_scan_on_startup: true
+  rescan_interval: 30.0      # seconds for automatic rescanning
+
+# GUI Settings
+gui:
+  theme: "dark"              # "dark" or "light"
+  window_geometry:
+    width: 1200
+    height: 800
+    x: 100
+    y: 100
+  splitter_sizes: [300, 900]
+  auto_refresh_interval: 100 # milliseconds
+  max_log_entries: 1000
+
+# Monitoring Settings
+monitoring:
+  max_history_size: 10000
+  statistics_update_interval: 1.0  # seconds
+  cleanup_interval: 10.0           # seconds
+  default_chart_duration: 60      # seconds
+
+# Parameter Settings
+parameters:
+  auto_read_on_connect: true
+  backup_before_write: true
+  confirmation_required: true
+  validation_enabled: true
+
+# Device Type Configurations
+device_types:
+  servo:
+    default_parameters:
+      ID: 1
+      MIN_ANGLE: -180.0
+      MAX_ANGLE: 180.0
+      SPEED: 100
+      TORQUE_LIMIT: 50
+      RETURN_DELAY: 2
+    parameter_ranges:
+      ID: [1, 254]
+      MIN_ANGLE: [-180.0, 180.0]
+      MAX_ANGLE: [-180.0, 180.0]
+      SPEED: [1, 1000]
+      TORQUE_LIMIT: [0, 100]
+      RETURN_DELAY: [0, 254]
+
+  encoder:
+    default_parameters:
+      ID: 1
+      CPR: 1024
+      INVERT_A: 0
+      INVERT_B: 0
+      USE_INDEX: 0
+      FILTER_TIME: 10
+    parameter_ranges:
+      ID: [1, 254]
+      CPR: [1, 10000]
+      INVERT_A: [0, 1]
+      INVERT_B: [0, 1]
+      USE_INDEX: [0, 1]
+      FILTER_TIME: [0, 255]
+
+  motor:
+    default_parameters:
+      ID: 1
+      MAX_CURRENT: 5.0
+      MAX_VELOCITY: 1000
+      KP: 100.0
+      KI: 0.0
+      KD: 0.0
+      CONTROL_MODE: 1
+    parameter_ranges:
+      ID: [1, 254]
+      MAX_CURRENT: [0.1, 50.0]
+      MAX_VELOCITY: [1, 10000]
+      KP: [0.0, 1000.0]
+      KI: [0.0, 1000.0]
+      KD: [0.0, 1000.0]
+      CONTROL_MODE: [0, 2]
+
+# File Paths
+file_paths:
+  config_directory: "~/.config/mavlink_wizard"
+  log_directory: "~/.local/share/mavlink_wizard/logs"
+  backup_directory: "~/.local/share/mavlink_wizard/backups"
+  default_config_filename: "device_config.json"
+
+# Logging Settings
+logging:
+  level: "INFO"              # DEBUG, INFO, WARNING, ERROR
+  console_output: true
+  file_output: true
+  max_file_size: 10485760    # 10MB
+  backup_count: 5
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Advanced Settings
+advanced:
+  mavlink_version: 2
+  system_id: 255             # Ground station system ID
+  component_id: 190          # Ground station component ID
+  message_timeout: 1.0       # seconds
+  retry_count: 3
+  thread_pool_size: 4
+
+# Security Settings
+security:
+  allow_firmware_upload: false
+  require_confirmation_for_reset: true
+  parameter_write_protection: false
+  backup_sensitive_parameters: true
+
+# Keyboard Shortcuts
+shortcuts:
+  scan_devices: "Ctrl+R"
+  save_config: "Ctrl+S"
+  load_config: "Ctrl+O"
+  clear_log: "Ctrl+L"
+  exit_application: "Ctrl+Q"
+  toggle_monitoring: "F1"
+  emergency_stop: "Escape"
+
+# Chart and Visualization Settings
+visualization:
+  default_chart_type: "line"
+  update_interval: 100       # milliseconds
+  max_data_points: 1000
+  colors:
+    position: "#FF6B6B"
+    velocity: "#4ECDC4"
+    current: "#45B7D1"
+    voltage: "#96CEB4"
+    temperature: "#FECA57"
+  grid_enabled: true
+  legend_enabled: true
+  auto_scale: true

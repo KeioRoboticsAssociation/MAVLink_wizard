@@ -1,0 +1,71 @@
+{
+  "configuration_name": "Example Multi-Device Setup",
+  "created_date": "2024-01-01T12:00:00Z",
+  "version": "1.0",
+  "devices": {
+    "1": {
+      "device_id": 1,
+      "device_type": "servo",
+      "parameters": {
+        "ID": 1,
+        "MIN_ANGLE": -90.0,
+        "MAX_ANGLE": 90.0,
+        "SPEED": 150,
+        "TORQUE_LIMIT": 75,
+        "RETURN_DELAY": 2
+      },
+      "description": "Pan servo for camera gimbal"
+    },
+    "2": {
+      "device_id": 2,
+      "device_type": "servo",
+      "parameters": {
+        "ID": 2,
+        "MIN_ANGLE": -45.0,
+        "MAX_ANGLE": 45.0,
+        "SPEED": 100,
+        "TORQUE_LIMIT": 50,
+        "RETURN_DELAY": 2
+      },
+      "description": "Tilt servo for camera gimbal"
+    },
+    "3": {
+      "device_id": 3,
+      "device_type": "encoder",
+      "parameters": {
+        "ID": 3,
+        "CPR": 2048,
+        "INVERT_A": 0,
+        "INVERT_B": 0,
+        "USE_INDEX": 1,
+        "FILTER_TIME": 5
+      },
+      "description": "Main shaft encoder"
+    },
+    "4": {
+      "device_id": 4,
+      "device_type": "motor",
+      "parameters": {
+        "ID": 4,
+        "MAX_CURRENT": 10.0,
+        "MAX_VELOCITY": 2000,
+        "KP": 200.0,
+        "KI": 5.0,
+        "KD": 1.0,
+        "CONTROL_MODE": 1
+      },
+      "description": "Drive motor"
+    }
+  },
+  "serial_settings": {
+    "port": "/dev/ttyUSB0",
+    "baud_rate": 115200,
+    "timeout": 1.0
+  },
+  "notes": [
+    "This is an example configuration for a robotic system",
+    "Device 1 & 2: Camera gimbal servos",
+    "Device 3: Position feedback encoder",
+    "Device 4: Main drive motor with velocity control"
+  ]
+}
