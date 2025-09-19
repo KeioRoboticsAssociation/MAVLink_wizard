@@ -8,7 +8,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 
-from stm32_mavlink_interface.msg import ServoState, EncoderState, RobomasterMotorState
+from stm32_mavlink_interface.msg import ServoState, EncoderState, RobomasterMotorState, DCMotorState
 
 
 @dataclass
@@ -61,6 +61,13 @@ class DeviceScanner(Node):
             RobomasterMotorState,
             '/robomaster/motor_state',
             self.motor_state_callback,
+            qos_profile
+        )
+
+        self.dcmotor_state_sub = self.create_subscription(
+            DCMotorState,
+            '/dcmotor/state',
+            self.dcmotor_state_callback,
             qos_profile
         )
 
@@ -172,6 +179,42 @@ class DeviceScanner(Node):
                 self.on_device_found(device)
 
             self.get_logger().info(f'Discovered motor device with ID {msg.motor_id}')
+        else:
+            # Update existing device
+            device = self.discovered_devices[device_key]
+            device.last_seen = current_time
+            device.status = status
+
+    def dcmotor_state_callback(self, msg: DCMotorState):
+        """Handle DC motor state messages to discover DC motor devices"""
+        device_key = f"dcmotor_{msg.motor_id}"
+        current_time = time.time()
+
+        status_map = {
+            0: "OK",
+            1: "NOT_INITIALIZED",
+            2: "ERROR",
+            3: "OVERHEAT",
+            4: "OVERCURRENT",
+            5: "TIMEOUT"
+        }
+
+        status = status_map.get(msg.status, "UNKNOWN")
+
+        if device_key not in self.discovered_devices:
+            # New device discovered
+            device = MAVLinkDevice(
+                device_id=msg.motor_id,
+                device_type="dcmotor",
+                last_seen=current_time,
+                status=status
+            )
+            self.discovered_devices[device_key] = device
+
+            if self.on_device_found:
+                self.on_device_found(device)
+
+            self.get_logger().info(f'Discovered DC motor device with ID {msg.motor_id}')
         else:
             # Update existing device
             device = self.discovered_devices[device_key]

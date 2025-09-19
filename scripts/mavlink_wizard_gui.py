@@ -19,8 +19,8 @@ from PyQt5.QtGui import *
 
 from std_msgs.msg import String
 from sensor_msgs.msg import JointState
-from stm32_mavlink_interface.msg import ServoState, EncoderState, RobomasterMotorState, RobomasterMotorCommand
-from stm32_mavlink_interface.srv import SetServoConfig, SetEncoderConfig
+from stm32_mavlink_interface.msg import ServoState, EncoderState, RobomasterMotorState, RobomasterMotorCommand, DCMotorState, DCMotorCommand, ServoCommand
+from stm32_mavlink_interface.srv import SetServoConfig, SetEncoderConfig, SetDCMotorConfig, GetDCMotorConfig
 
 # Import the updated device scanner and parameter manager
 from device_scanner import DeviceScanner
@@ -127,6 +127,7 @@ class SignalBridge(QObject):
     servo_state_signal = pyqtSignal(object)
     encoder_state_signal = pyqtSignal(object)
     motor_state_signal = pyqtSignal(object)
+    dcmotor_state_signal = pyqtSignal(object)
 
 class MAVLinkWizardNode(Node):
     """ROS2 node for MAVLink Wizard communication"""
@@ -151,6 +152,8 @@ class MAVLinkWizardNode(Node):
             EncoderState, '/encoder/states', self.encoder_state_callback, qos_profile)
         self.motor_state_sub = self.create_subscription(
             RobomasterMotorState, '/robomaster/motor_state', self.motor_state_callback, qos_profile)
+        self.dcmotor_state_sub = self.create_subscription(
+            DCMotorState, '/dcmotor/state', self.dcmotor_state_callback, qos_profile)
 
         # Service clients for configuration
         self.servo_config_client = self.create_client(SetServoConfig, '/servo/set_config')
@@ -158,6 +161,8 @@ class MAVLinkWizardNode(Node):
 
         # Publisher for motor commands
         self.motor_command_pub = self.create_publisher(RobomasterMotorCommand, '/robomaster/motor_command', 10)
+        self.dcmotor_command_pub = self.create_publisher(DCMotorCommand, '/dcmotor/command', 10)
+        self.servo_command_pub = self.create_publisher(ServoCommand, '/servo/command', 10)
 
         self.get_logger().info('MAVLink Wizard Node initialized')
 
@@ -169,6 +174,9 @@ class MAVLinkWizardNode(Node):
 
     def motor_state_callback(self, msg):
         self.signal_bridge.motor_state_signal.emit(msg)
+
+    def dcmotor_state_callback(self, msg):
+        self.signal_bridge.dcmotor_state_signal.emit(msg)
 
 class DeviceTreeWidget(QTreeWidget):
     """Tree widget for displaying discovered devices"""
@@ -184,6 +192,7 @@ class DeviceTreeWidget(QTreeWidget):
         self.servo_category = QTreeWidgetItem(self, ['Servos', '', '', ''])
         self.encoder_category = QTreeWidgetItem(self, ['Encoders', '', '', ''])
         self.motor_category = QTreeWidgetItem(self, ['Motors', '', '', ''])
+        self.dcmotor_category = QTreeWidgetItem(self, ['DC Motors', '', '', ''])
 
         self.expandAll()
 
@@ -192,6 +201,7 @@ class DeviceTreeWidget(QTreeWidget):
         self.servo_category.takeChildren()
         self.encoder_category.takeChildren()
         self.motor_category.takeChildren()
+        self.dcmotor_category.takeChildren()
 
     def add_device(self, device_type: str, device_id: int, status: str = 'Unknown'):
         """Add a device to the tree"""
@@ -201,6 +211,8 @@ class DeviceTreeWidget(QTreeWidget):
             parent = self.encoder_category
         elif device_type == 'motor':
             parent = self.motor_category
+        elif device_type == 'dcmotor':
+            parent = self.dcmotor_category
         else:
             return
 
@@ -358,11 +370,99 @@ class ParameterConfigWidget(QWidget):
 
         self.motor_group.setLayout(motor_layout)
 
+        # DC Motor-specific parameters
+        self.dcmotor_group = QGroupBox("DC Motor Parameters")
+        dcmotor_layout = QFormLayout()
+
+        # Control mode selection
+        self.dcmotor_mode_combo = QComboBox()
+        self.dcmotor_mode_combo.addItems(["Position Control", "Velocity Control", "Current Control"])
+        dcmotor_layout.addRow("Control Mode:", self.dcmotor_mode_combo)
+        self.parameter_widgets['dc_control_mode'] = self.dcmotor_mode_combo
+
+        # Speed PID parameters
+        self.dc_speed_kp_spinbox = QDoubleSpinBox()
+        self.dc_speed_kp_spinbox.setRange(0.0, 100.0)
+        self.dc_speed_kp_spinbox.setDecimals(3)
+        dcmotor_layout.addRow("Speed KP:", self.dc_speed_kp_spinbox)
+        self.parameter_widgets['dc_speed_kp'] = self.dc_speed_kp_spinbox
+
+        self.dc_speed_ki_spinbox = QDoubleSpinBox()
+        self.dc_speed_ki_spinbox.setRange(0.0, 100.0)
+        self.dc_speed_ki_spinbox.setDecimals(3)
+        dcmotor_layout.addRow("Speed KI:", self.dc_speed_ki_spinbox)
+        self.parameter_widgets['dc_speed_ki'] = self.dc_speed_ki_spinbox
+
+        self.dc_speed_kd_spinbox = QDoubleSpinBox()
+        self.dc_speed_kd_spinbox.setRange(0.0, 100.0)
+        self.dc_speed_kd_spinbox.setDecimals(3)
+        dcmotor_layout.addRow("Speed KD:", self.dc_speed_kd_spinbox)
+        self.parameter_widgets['dc_speed_kd'] = self.dc_speed_kd_spinbox
+
+        # Position PID parameters
+        self.dc_position_kp_spinbox = QDoubleSpinBox()
+        self.dc_position_kp_spinbox.setRange(0.0, 100.0)
+        self.dc_position_kp_spinbox.setDecimals(3)
+        dcmotor_layout.addRow("Position KP:", self.dc_position_kp_spinbox)
+        self.parameter_widgets['dc_position_kp'] = self.dc_position_kp_spinbox
+
+        self.dc_position_ki_spinbox = QDoubleSpinBox()
+        self.dc_position_ki_spinbox.setRange(0.0, 100.0)
+        self.dc_position_ki_spinbox.setDecimals(3)
+        dcmotor_layout.addRow("Position KI:", self.dc_position_ki_spinbox)
+        self.parameter_widgets['dc_position_ki'] = self.dc_position_ki_spinbox
+
+        self.dc_position_kd_spinbox = QDoubleSpinBox()
+        self.dc_position_kd_spinbox.setRange(0.0, 100.0)
+        self.dc_position_kd_spinbox.setDecimals(3)
+        dcmotor_layout.addRow("Position KD:", self.dc_position_kd_spinbox)
+        self.parameter_widgets['dc_position_kd'] = self.dc_position_kd_spinbox
+
+        # Physical limits
+        self.dc_max_speed_spinbox = QDoubleSpinBox()
+        self.dc_max_speed_spinbox.setRange(1.0, 50.0)
+        self.dc_max_speed_spinbox.setSuffix(" rad/s")
+        dcmotor_layout.addRow("Max Speed:", self.dc_max_speed_spinbox)
+        self.parameter_widgets['dc_max_speed_rad_s'] = self.dc_max_speed_spinbox
+
+        self.dc_max_accel_spinbox = QDoubleSpinBox()
+        self.dc_max_accel_spinbox.setRange(1.0, 200.0)
+        self.dc_max_accel_spinbox.setSuffix(" rad/s²")
+        dcmotor_layout.addRow("Max Acceleration:", self.dc_max_accel_spinbox)
+        self.parameter_widgets['dc_max_acceleration_rad_s2'] = self.dc_max_accel_spinbox
+
+        # Position limits
+        self.dc_position_limits_checkbox = QCheckBox()
+        dcmotor_layout.addRow("Use Position Limits:", self.dc_position_limits_checkbox)
+        self.parameter_widgets['dc_use_position_limits'] = self.dc_position_limits_checkbox
+
+        self.dc_min_position_spinbox = QDoubleSpinBox()
+        self.dc_min_position_spinbox.setRange(-1000.0, 1000.0)
+        self.dc_min_position_spinbox.setSuffix(" rad")
+        dcmotor_layout.addRow("Min Position:", self.dc_min_position_spinbox)
+        self.parameter_widgets['dc_position_limit_min_rad'] = self.dc_min_position_spinbox
+
+        self.dc_max_position_spinbox = QDoubleSpinBox()
+        self.dc_max_position_spinbox.setRange(-1000.0, 1000.0)
+        self.dc_max_position_spinbox.setSuffix(" rad")
+        dcmotor_layout.addRow("Max Position:", self.dc_max_position_spinbox)
+        self.parameter_widgets['dc_position_limit_max_rad'] = self.dc_max_position_spinbox
+
+        # Safety settings
+        self.dc_watchdog_timeout_spinbox = QSpinBox()
+        self.dc_watchdog_timeout_spinbox.setRange(100, 10000)
+        self.dc_watchdog_timeout_spinbox.setSuffix(" ms")
+        dcmotor_layout.addRow("Watchdog Timeout:", self.dc_watchdog_timeout_spinbox)
+        self.parameter_widgets['dc_watchdog_timeout_ms'] = self.dc_watchdog_timeout_spinbox
+
+        self.dcmotor_group.setLayout(dcmotor_layout)
+
         # Add all groups to main layout
         layout.addLayout(self.parameter_form)
         layout.addWidget(self.servo_group)
         layout.addWidget(self.encoder_group)
         layout.addWidget(self.motor_group)
+        layout.addWidget(self.dcmotor_group)
 
         # Control buttons
         button_layout = QHBoxLayout()
@@ -511,6 +611,7 @@ class ParameterConfigWidget(QWidget):
         self.servo_group.setVisible(self.current_device_type == 'servo')
         self.encoder_group.setVisible(self.current_device_type == 'encoder')
         self.motor_group.setVisible(self.current_device_type == 'motor')
+        self.dcmotor_group.setVisible(self.current_device_type == 'dcmotor')
 
         # Update button availability
         has_device = self.current_device_type is not None and self.current_device_id is not None
@@ -685,6 +786,378 @@ class MotorControlWidget(QWidget):
 
         self.motor_command_publisher.publish(cmd)
 
+
+class DCMotorControlWidget(QWidget):
+    """Widget for controlling DC motors"""
+
+    def __init__(self, dcmotor_command_publisher=None):
+        super().__init__()
+        self.dcmotor_command_publisher = dcmotor_command_publisher
+        self.current_motor_id = 10  # Default DC motor ID
+        self.setup_ui()
+
+    def setup_ui(self):
+        layout = QVBoxLayout()
+
+        # Motor info
+        info_layout = QHBoxLayout()
+        info_layout.addWidget(QLabel("DC Motor ID: 10"))
+        info_layout.addStretch()
+        layout.addLayout(info_layout)
+
+        # Control mode selection
+        mode_group = QGroupBox("Control Mode")
+        mode_layout = QVBoxLayout()
+
+        self.mode_group = QButtonGroup()
+        self.position_mode_radio = QRadioButton("Position Control")
+        self.velocity_mode_radio = QRadioButton("Velocity Control")
+        self.current_mode_radio = QRadioButton("Current Control")
+
+        self.mode_group.addButton(self.position_mode_radio, 0)
+        self.mode_group.addButton(self.velocity_mode_radio, 1)
+        self.mode_group.addButton(self.current_mode_radio, 2)
+
+        self.position_mode_radio.setChecked(True)  # Default mode
+
+        mode_layout.addWidget(self.position_mode_radio)
+        mode_layout.addWidget(self.velocity_mode_radio)
+        mode_layout.addWidget(self.current_mode_radio)
+        mode_group.setLayout(mode_layout)
+        layout.addWidget(mode_group)
+
+        # Control inputs
+        control_group = QGroupBox("Control Values")
+        control_layout = QFormLayout()
+
+        # Position control
+        self.position_spinbox = QDoubleSpinBox()
+        self.position_spinbox.setRange(-100.0, 100.0)
+        self.position_spinbox.setSuffix(" rad")
+        self.position_spinbox.setDecimals(3)
+        control_layout.addRow("Target Position:", self.position_spinbox)
+
+        # Velocity control
+        self.velocity_spinbox = QDoubleSpinBox()
+        self.velocity_spinbox.setRange(-15.0, 15.0)
+        self.velocity_spinbox.setSuffix(" rad/s")
+        self.velocity_spinbox.setDecimals(3)
+        control_layout.addRow("Target Velocity:", self.velocity_spinbox)
+
+        # Current control
+        self.current_spinbox = QDoubleSpinBox()
+        self.current_spinbox.setRange(-5.0, 5.0)
+        self.current_spinbox.setSuffix(" A")
+        self.current_spinbox.setDecimals(3)
+        control_layout.addRow("Target Current:", self.current_spinbox)
+
+        control_group.setLayout(control_layout)
+        layout.addWidget(control_group)
+
+        # Enable/Disable control
+        enable_layout = QHBoxLayout()
+        self.enable_checkbox = QCheckBox("Motor Enabled")
+        self.enable_checkbox.setChecked(True)
+        enable_layout.addWidget(self.enable_checkbox)
+        enable_layout.addStretch()
+        layout.addLayout(enable_layout)
+
+        # Control buttons
+        button_layout = QHBoxLayout()
+
+        self.send_command_button = QPushButton("Send Command")
+        self.send_command_button.clicked.connect(self.send_command)
+        button_layout.addWidget(self.send_command_button)
+
+        self.stop_button = QPushButton("STOP")
+        self.stop_button.setStyleSheet("background-color: red; color: white; font-weight: bold;")
+        self.stop_button.clicked.connect(self.emergency_stop)
+        button_layout.addWidget(self.stop_button)
+
+        button_layout.addStretch()
+        layout.addLayout(button_layout)
+
+        # Status display
+        status_group = QGroupBox("Motor Status")
+        status_layout = QFormLayout()
+
+        self.position_label = QLabel("0.000 rad")
+        self.velocity_label = QLabel("0.000 rad/s")
+        self.current_label = QLabel("0.000 A")
+        self.temperature_label = QLabel("0.0 °C")
+        self.status_label = QLabel("Unknown")
+
+        status_layout.addRow("Position:", self.position_label)
+        status_layout.addRow("Velocity:", self.velocity_label)
+        status_layout.addRow("Current:", self.current_label)
+        status_layout.addRow("Temperature:", self.temperature_label)
+        status_layout.addRow("Status:", self.status_label)
+
+        status_group.setLayout(status_layout)
+        layout.addWidget(status_group)
+
+        layout.addStretch()
+        self.setLayout(layout)
+
+    def send_command(self):
+        """Send motor control command"""
+        if not self.dcmotor_command_publisher:
+            logger.warning("DC motor command publisher not available")
+            return
+
+        cmd = DCMotorCommand()
+        cmd.motor_id = self.current_motor_id
+        cmd.control_mode = self.mode_group.checkedId()
+        cmd.enabled = self.enable_checkbox.isChecked()
+
+        # Set target value based on control mode
+        if cmd.control_mode == 0:  # Position control
+            cmd.target_value = self.position_spinbox.value()
+        elif cmd.control_mode == 1:  # Velocity control
+            cmd.target_value = self.velocity_spinbox.value()
+        elif cmd.control_mode == 2:  # Current control
+            cmd.target_value = self.current_spinbox.value()
+
+        logger.info(f"Sending DC motor command: mode={cmd.control_mode}, value={cmd.target_value}, enabled={cmd.enabled}")
+        self.dcmotor_command_publisher.publish(cmd)
+
+    def emergency_stop(self):
+        """Send emergency stop command"""
+        if not self.dcmotor_command_publisher:
+            logger.warning("DC motor command publisher not available")
+            return
+
+        cmd = DCMotorCommand()
+        cmd.motor_id = self.current_motor_id
+        cmd.control_mode = 1  # Velocity control
+        cmd.target_value = 0.0
+        cmd.enabled = False
+
+        logger.info("Sending DC motor emergency stop")
+        self.dcmotor_command_publisher.publish(cmd)
+
+    def update_status(self, state_msg):
+        """Update status display with received state message"""
+        if state_msg.motor_id != self.current_motor_id:
+            return
+
+        self.position_label.setText(f"{state_msg.position_rad:.3f} rad")
+        self.velocity_label.setText(f"{state_msg.velocity_rad_s:.3f} rad/s")
+        self.current_label.setText(f"{state_msg.current_a:.3f} A")
+        self.temperature_label.setText(f"{state_msg.temperature_c:.1f} °C")
+
+        status_map = {
+            0: "OK",
+            1: "NOT_INITIALIZED",
+            2: "ERROR",
+            3: "OVERHEAT",
+            4: "OVERCURRENT",
+            5: "TIMEOUT"
+        }
+        status_text = status_map.get(state_msg.status, "UNKNOWN")
+        self.status_label.setText(status_text)
+
+        # Update enable checkbox based on motor state
+        self.enable_checkbox.setChecked(state_msg.enabled)
+
+
+class ServoControlWidget(QWidget):
+    """Widget for controlling servo motors"""
+
+    def __init__(self, servo_command_publisher=None):
+        super().__init__()
+        self.servo_command_publisher = servo_command_publisher
+        self.current_servo_id = 1  # Default servo ID
+        self.setup_ui()
+
+    def setup_ui(self):
+        layout = QVBoxLayout()
+
+        # Servo selection
+        servo_layout = QHBoxLayout()
+        servo_layout.addWidget(QLabel("Servo ID:"))
+        self.servo_id_spinbox = QSpinBox()
+        self.servo_id_spinbox.setRange(1, 16)
+        self.servo_id_spinbox.setValue(1)  # Default to servo 1
+        self.servo_id_spinbox.valueChanged.connect(self.on_servo_changed)
+        servo_layout.addWidget(self.servo_id_spinbox)
+        servo_layout.addStretch()
+        layout.addLayout(servo_layout)
+
+        # Control mode selection
+        mode_group = QGroupBox("Control Mode")
+        mode_layout = QVBoxLayout()
+
+        self.mode_group = QButtonGroup()
+        self.angle_mode_radio = QRadioButton("Angle Control")
+        self.pwm_mode_radio = QRadioButton("PWM Control")
+
+        self.mode_group.addButton(self.angle_mode_radio, 0)
+        self.mode_group.addButton(self.pwm_mode_radio, 1)
+
+        self.angle_mode_radio.setChecked(True)  # Default mode
+
+        mode_layout.addWidget(self.angle_mode_radio)
+        mode_layout.addWidget(self.pwm_mode_radio)
+        mode_group.setLayout(mode_layout)
+        layout.addWidget(mode_group)
+
+        # Control inputs
+        control_group = QGroupBox("Control Values")
+        control_layout = QFormLayout()
+
+        # Angle control
+        self.angle_spinbox = QDoubleSpinBox()
+        self.angle_spinbox.setRange(-180.0, 180.0)
+        self.angle_spinbox.setSuffix("°")
+        self.angle_spinbox.setDecimals(1)
+        self.angle_spinbox.setValue(0.0)
+        control_layout.addRow("Target Angle:", self.angle_spinbox)
+
+        # PWM control
+        self.pwm_spinbox = QSpinBox()
+        self.pwm_spinbox.setRange(1000, 2000)
+        self.pwm_spinbox.setSuffix(" μs")
+        self.pwm_spinbox.setValue(1500)
+        control_layout.addRow("PWM Pulse Width:", self.pwm_spinbox)
+
+        control_group.setLayout(control_layout)
+        layout.addWidget(control_group)
+
+        # Enable/Disable control
+        enable_layout = QHBoxLayout()
+        self.enable_checkbox = QCheckBox("Servo Enabled")
+        self.enable_checkbox.setChecked(True)
+        enable_layout.addWidget(self.enable_checkbox)
+        enable_layout.addStretch()
+        layout.addLayout(enable_layout)
+
+        # Control buttons
+        button_layout = QHBoxLayout()
+
+        self.send_command_button = QPushButton("Send Command")
+        self.send_command_button.clicked.connect(self.send_command)
+        button_layout.addWidget(self.send_command_button)
+
+        self.center_button = QPushButton("Center (0°)")
+        self.center_button.clicked.connect(self.move_to_center)
+        button_layout.addWidget(self.center_button)
+
+        self.disable_button = QPushButton("Disable")
+        self.disable_button.clicked.connect(self.disable_servo)
+        button_layout.addWidget(self.disable_button)
+
+        button_layout.addStretch()
+        layout.addLayout(button_layout)
+
+        # Quick position buttons
+        quick_pos_group = QGroupBox("Quick Positions")
+        quick_pos_layout = QGridLayout()
+
+        positions = [
+            ("−180°", -180), ("−90°", -90), ("0°", 0), ("+90°", 90), ("+180°", 180)
+        ]
+
+        for i, (label, angle) in enumerate(positions):
+            btn = QPushButton(label)
+            btn.clicked.connect(lambda checked, a=angle: self.move_to_angle(a))
+            quick_pos_layout.addWidget(btn, 0, i)
+
+        quick_pos_group.setLayout(quick_pos_layout)
+        layout.addWidget(quick_pos_group)
+
+        # Status display
+        status_group = QGroupBox("Servo Status")
+        status_layout = QFormLayout()
+
+        self.current_angle_label = QLabel("0.0°")
+        self.target_angle_label = QLabel("0.0°")
+        self.pwm_value_label = QLabel("1500 μs")
+        self.status_label = QLabel("Unknown")
+
+        status_layout.addRow("Current Angle:", self.current_angle_label)
+        status_layout.addRow("Target Angle:", self.target_angle_label)
+        status_layout.addRow("PWM Value:", self.pwm_value_label)
+        status_layout.addRow("Status:", self.status_label)
+
+        status_group.setLayout(status_layout)
+        layout.addWidget(status_group)
+
+        layout.addStretch()
+        self.setLayout(layout)
+
+        # Update initial state
+        self.on_servo_changed()
+
+    def set_servo_command_publisher(self, publisher):
+        """Set the servo command publisher"""
+        self.servo_command_publisher = publisher
+
+    def on_servo_changed(self):
+        self.current_servo_id = self.servo_id_spinbox.value()
+
+    def send_command(self):
+        """Send servo control command"""
+        if not self.servo_command_publisher:
+            logger.warning("Servo command publisher not available")
+            return
+
+        cmd = ServoCommand()
+        cmd.servo_id = self.current_servo_id
+        cmd.enable = self.enable_checkbox.isChecked()
+
+        if self.mode_group.checkedId() == 0:  # Angle control
+            cmd.angle_deg = self.angle_spinbox.value()
+            cmd.pulse_us = 0  # Let the system calculate PWM
+            logger.info(f"Sending servo command: ID={cmd.servo_id}, angle={cmd.angle_deg}°, enabled={cmd.enable}")
+        else:  # PWM control
+            cmd.pulse_us = self.pwm_spinbox.value()
+            cmd.angle_deg = 0.0  # PWM mode, angle is ignored
+            logger.info(f"Sending servo command: ID={cmd.servo_id}, PWM={cmd.pulse_us}μs, enabled={cmd.enable}")
+
+        self.servo_command_publisher.publish(cmd)
+
+    def move_to_center(self):
+        """Move servo to center position (0°)"""
+        self.angle_spinbox.setValue(0.0)
+        self.angle_mode_radio.setChecked(True)
+        self.send_command()
+
+    def move_to_angle(self, angle):
+        """Move servo to specific angle"""
+        self.angle_spinbox.setValue(angle)
+        self.angle_mode_radio.setChecked(True)
+        self.send_command()
+
+    def disable_servo(self):
+        """Disable servo"""
+        self.enable_checkbox.setChecked(False)
+        self.send_command()
+
+    def update_status(self, state_msg):
+        """Update status display with received state message"""
+        if state_msg.servo_id != self.current_servo_id:
+            return
+
+        self.current_angle_label.setText(f"{state_msg.current_angle_deg:.1f}°")
+        self.target_angle_label.setText(f"{state_msg.target_angle_deg:.1f}°")
+        self.pwm_value_label.setText(f"{state_msg.pulse_us} μs")
+
+        status_map = {
+            0: "OK",
+            1: "NOT_INITIALIZED",
+            2: "TIMER_ERROR",
+            3: "OUT_OF_RANGE",
+            4: "TIMEOUT",
+            5: "CONFIG_ERROR"
+        }
+        status_text = status_map.get(state_msg.status, "UNKNOWN")
+        self.status_label.setText(status_text)
+
+        # Update enable checkbox based on servo state
+        self.enable_checkbox.setChecked(state_msg.enabled)
+
+
 class MonitorWidget(QWidget):
     """Widget for real-time monitoring of device status"""
 
@@ -817,9 +1290,17 @@ class MAVLinkWizardGUI(QMainWindow):
         # Configuration tab - will be initialized after ROS setup
         self.config_widget = None
 
+        # Servo Control tab - will be initialized after ROS setup
+        self.servo_control_widget = ServoControlWidget()
+        self.tab_widget.addTab(self.servo_control_widget, "Servo Control")
+
         # Motor Control tab - will be initialized after ROS setup
         self.motor_control_widget = MotorControlWidget()
         self.tab_widget.addTab(self.motor_control_widget, "Motor Control")
+
+        # DC Motor Control tab - will be initialized after ROS setup
+        self.dcmotor_control_widget = DCMotorControlWidget()
+        self.tab_widget.addTab(self.dcmotor_control_widget, "DC Motor Control")
 
         # Monitoring tab
         self.monitor_widget = MonitorWidget()
@@ -910,12 +1391,22 @@ class MAVLinkWizardGUI(QMainWindow):
             self.ros_thread.run = lambda: self.executor.spin()
             self.ros_thread.start()
 
+            # Set servo command publisher for servo control widget
+            if hasattr(self.ros_node, 'servo_command_pub'):
+                self.servo_control_widget.set_servo_command_publisher(self.ros_node.servo_command_pub)
+
             # Set motor command publisher for motor control widget
             if hasattr(self.ros_node, 'motor_command_pub'):
                 self.motor_control_widget.set_motor_command_publisher(self.ros_node.motor_command_pub)
 
+            # Set DC motor command publisher for DC motor control widget
+            if hasattr(self.ros_node, 'dcmotor_command_pub'):
+                self.dcmotor_control_widget.dcmotor_command_publisher = self.ros_node.dcmotor_command_pub
+
             # Connect signal bridge for real-time monitoring
+            self.signal_bridge.servo_state_signal.connect(self.on_servo_state_received)
             self.signal_bridge.motor_state_signal.connect(self.on_motor_state_received)
+            self.signal_bridge.dcmotor_state_signal.connect(self.on_dcmotor_state_received)
 
             self.status_bar.showMessage("ROS2 nodes initialized successfully")
 
@@ -965,7 +1456,27 @@ class MAVLinkWizardGUI(QMainWindow):
         """Handle device selection from tree"""
         if self.config_widget:
             self.config_widget.set_device(device_type, device_id)
+
+        # Update servo control widget if servo is selected
+        if device_type == 'servo':
+            self.servo_control_widget.servo_id_spinbox.setValue(device_id)
+            self.servo_control_widget.on_servo_changed()
+
         self.status_bar.showMessage(f"Selected {device_type} ID {device_id}")
+
+    def on_servo_state_received(self, msg):
+        """Handle servo state messages for real-time monitoring"""
+        data = {
+            'position': f"{msg.current_angle_deg:.1f}°",
+            'velocity': 'N/A',  # Servos don't have velocity feedback
+            'current': 'N/A',   # Most servos don't report current
+            'temperature': 'N/A',  # Most servos don't have temperature
+            'status': 'OK' if msg.status == 0 else 'ERROR'
+        }
+        self.monitor_widget.update_device_data('servo', msg.servo_id, data)
+
+        # Update servo control widget status
+        self.servo_control_widget.update_status(msg)
 
     def on_motor_state_received(self, msg):
         """Handle motor state messages for real-time monitoring"""
@@ -977,6 +1488,30 @@ class MAVLinkWizardGUI(QMainWindow):
             'status': 'OK' if msg.status == 0 else 'ERROR'
         }
         self.monitor_widget.update_device_data('motor', msg.motor_id, data)
+
+    def on_dcmotor_state_received(self, msg):
+        """Handle DC motor state messages for real-time monitoring"""
+        status_map = {
+            0: "OK",
+            1: "NOT_INITIALIZED",
+            2: "ERROR",
+            3: "OVERHEAT",
+            4: "OVERCURRENT",
+            5: "TIMEOUT"
+        }
+
+        data = {
+            'position': f"{msg.position_rad:.3f} rad",
+            'velocity': f"{msg.velocity_rad_s:.2f} rad/s",
+            'current': f"{msg.current_a:.2f} A",
+            'temperature': f"{msg.temperature_c:.1f}°C",
+            'status': status_map.get(msg.status, "UNKNOWN"),
+            'enabled': 'Yes' if msg.enabled else 'No'
+        }
+        self.monitor_widget.update_device_data('dcmotor', msg.motor_id, data)
+
+        # Update DC motor control widget status
+        self.dcmotor_control_widget.update_status(msg)
 
     def save_configuration(self):
         """Save current device configuration to file"""

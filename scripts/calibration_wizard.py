@@ -140,7 +140,7 @@ class ServoCalibrationWizard(QWizard):
 
         # Quick buttons
         quick_layout = QHBoxLayout()
-        for angle in [-90, -45, 0, 45, 90]:
+        for angle in [-180, -90, 0, 90, 180]:
             btn = QPushButton(f"{angle}°")
             btn.clicked.connect(lambda checked, a=angle: self.set_center_position(a))
             quick_layout.addWidget(btn)
@@ -202,14 +202,14 @@ class ServoCalibrationWizard(QWizard):
 
         self.min_position_slider = QSlider(Qt.Horizontal)
         self.min_position_slider.setRange(-1800, 0)
-        self.min_position_slider.setValue(-900)  # -90 degrees default
+        self.min_position_slider.setValue(-1800)  # -180 degrees default
         self.min_position_slider.valueChanged.connect(self.update_min_position)
 
         self.min_position_spinbox = QDoubleSpinBox()
-        self.min_position_spinbox.setRange(-180.0, 0.0)
+        self.min_position_spinbox.setRange(-180.0, 180.0)
         self.min_position_spinbox.setSingleStep(0.1)
         self.min_position_spinbox.setSuffix("°")
-        self.min_position_spinbox.setValue(-90.0)
+        self.min_position_spinbox.setValue(-180.0)
         self.min_position_spinbox.valueChanged.connect(self.min_spinbox_changed)
 
         min_test_btn = QPushButton("Test Min")
@@ -227,14 +227,14 @@ class ServoCalibrationWizard(QWizard):
 
         self.max_position_slider = QSlider(Qt.Horizontal)
         self.max_position_slider.setRange(0, 1800)
-        self.max_position_slider.setValue(900)  # 90 degrees default
+        self.max_position_slider.setValue(1800)  # 180 degrees default
         self.max_position_slider.valueChanged.connect(self.update_max_position)
 
         self.max_position_spinbox = QDoubleSpinBox()
-        self.max_position_spinbox.setRange(0.0, 180.0)
+        self.max_position_spinbox.setRange(-180.0, 180.0)
         self.max_position_spinbox.setSingleStep(0.1)
         self.max_position_spinbox.setSuffix("°")
-        self.max_position_spinbox.setValue(90.0)
+        self.max_position_spinbox.setValue(180.0)
         self.max_position_spinbox.valueChanged.connect(self.max_spinbox_changed)
 
         max_test_btn = QPushButton("Test Max")
@@ -251,7 +251,7 @@ class ServoCalibrationWizard(QWizard):
         sweep_btn = QPushButton("Sweep Range")
         sweep_btn.clicked.connect(self.sweep_range)
 
-        self.range_display = QLabel("Range: 180.0°")
+        self.range_display = QLabel("Range: 360.0°")
         self.range_display.setStyleSheet("font-weight: bold; color: blue;")
 
         sweep_layout.addWidget(sweep_btn)
@@ -517,8 +517,8 @@ class ServoCalibrationWizard(QWizard):
     def update_summary(self):
         """Update verification summary"""
         center = self.center_position_spinbox.value() if hasattr(self, 'center_position_spinbox') else 0
-        min_pos = self.min_position_spinbox.value() if hasattr(self, 'min_position_spinbox') else -90
-        max_pos = self.max_position_spinbox.value() if hasattr(self, 'max_position_spinbox') else 90
+        min_pos = self.min_position_spinbox.value() if hasattr(self, 'min_position_spinbox') else -180
+        max_pos = self.max_position_spinbox.value() if hasattr(self, 'max_position_spinbox') else 180
         range_deg = max_pos - min_pos
 
         summary_text = f"""

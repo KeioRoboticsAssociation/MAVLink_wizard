@@ -18,7 +18,8 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 from stm32_mavlink_interface.msg import RobomasterMotorConfig
 from stm32_mavlink_interface.srv import (
     SetServoConfig, SetEncoderConfig,
-    SetRobomasterMotorConfig, GetRobomasterMotorConfig
+    SetRobomasterMotorConfig, GetRobomasterMotorConfig,
+    SetDCMotorConfig, GetDCMotorConfig
 )
 
 
@@ -309,6 +310,139 @@ class ParameterManager(Node):
                     default_value=3000,
                     unit='ms'
                 )
+            },
+            'dcmotor': {
+                'ID': Parameter(
+                    name='ID',
+                    value=10,
+                    param_type=ParameterType.UINT8,
+                    description='DC Motor ID',
+                    min_value=1,
+                    max_value=20,
+                    default_value=10
+                ),
+                'CONTROL_MODE': Parameter(
+                    name='CONTROL_MODE',
+                    value=0,
+                    param_type=ParameterType.UINT8,
+                    description='Control mode (0: position, 1: velocity, 2: current)',
+                    min_value=0,
+                    max_value=2,
+                    default_value=0
+                ),
+                'SPEED_KP': Parameter(
+                    name='SPEED_KP',
+                    value=0.8,
+                    param_type=ParameterType.REAL32,
+                    description='Speed control P gain',
+                    min_value=0.0,
+                    max_value=100.0,
+                    default_value=0.8
+                ),
+                'SPEED_KI': Parameter(
+                    name='SPEED_KI',
+                    value=0.0,
+                    param_type=ParameterType.REAL32,
+                    description='Speed control I gain',
+                    min_value=0.0,
+                    max_value=100.0,
+                    default_value=0.0
+                ),
+                'SPEED_KD': Parameter(
+                    name='SPEED_KD',
+                    value=0.0,
+                    param_type=ParameterType.REAL32,
+                    description='Speed control D gain',
+                    min_value=0.0,
+                    max_value=100.0,
+                    default_value=0.0
+                ),
+                'POSITION_KP': Parameter(
+                    name='POSITION_KP',
+                    value=3.0,
+                    param_type=ParameterType.REAL32,
+                    description='Position control P gain',
+                    min_value=0.0,
+                    max_value=100.0,
+                    default_value=3.0
+                ),
+                'POSITION_KI': Parameter(
+                    name='POSITION_KI',
+                    value=0.0,
+                    param_type=ParameterType.REAL32,
+                    description='Position control I gain',
+                    min_value=0.0,
+                    max_value=100.0,
+                    default_value=0.0
+                ),
+                'POSITION_KD': Parameter(
+                    name='POSITION_KD',
+                    value=0.0,
+                    param_type=ParameterType.REAL32,
+                    description='Position control D gain',
+                    min_value=0.0,
+                    max_value=100.0,
+                    default_value=0.0
+                ),
+                'MAX_SPEED': Parameter(
+                    name='MAX_SPEED',
+                    value=15.0,
+                    param_type=ParameterType.REAL32,
+                    description='Maximum speed in rad/s',
+                    min_value=0.1,
+                    max_value=100.0,
+                    default_value=15.0,
+                    unit='rad/s'
+                ),
+                'MAX_ACCELERATION': Parameter(
+                    name='MAX_ACCELERATION',
+                    value=50.0,
+                    param_type=ParameterType.REAL32,
+                    description='Maximum acceleration in rad/s²',
+                    min_value=1.0,
+                    max_value=500.0,
+                    default_value=50.0,
+                    unit='rad/s²'
+                ),
+                'POSITION_LIMITS': Parameter(
+                    name='POSITION_LIMITS',
+                    value=0,
+                    param_type=ParameterType.UINT8,
+                    description='Use position limits (0: disabled, 1: enabled)',
+                    min_value=0,
+                    max_value=1,
+                    default_value=0
+                ),
+                'MIN_POSITION': Parameter(
+                    name='MIN_POSITION',
+                    value=-3.14159,
+                    param_type=ParameterType.REAL32,
+                    description='Minimum position limit in radians',
+                    min_value=-6.28318,
+                    max_value=6.28318,
+                    default_value=-3.14159,
+                    unit='rad'
+                ),
+                'MAX_POSITION': Parameter(
+                    name='MAX_POSITION',
+                    value=3.14159,
+                    param_type=ParameterType.REAL32,
+                    description='Maximum position limit in radians',
+                    min_value=-6.28318,
+                    max_value=6.28318,
+                    default_value=3.14159,
+                    unit='rad'
+                ),
+                'WATCHDOG_TIMEOUT': Parameter(
+                    name='WATCHDOG_TIMEOUT',
+                    value=1000,
+                    param_type=ParameterType.UINT32,
+                    description='Watchdog timeout in milliseconds',
+                    min_value=100,
+                    max_value=10000,
+                    default_value=1000,
+                    unit='ms'
+                )
             }
         }
 
@@ -412,6 +546,9 @@ class ParameterManager(Node):
             if device_type == 'motor':
                 # For motors, we need to get current config, update it, and send it back
                 return self._update_motor_config(device_id, param_name, value)
+            elif device_type == 'dcmotor':
+                # For DC motors, we need to get current config, update it, and send it back
+                return self._update_dcmotor_config(device_id, param_name, value)
             elif device_type == 'servo':
                 # For servos, call the servo config service
                 self.get_logger().info(f'Servo parameter update not yet implemented for {param_name}')
@@ -501,8 +638,12 @@ class ParameterManager(Node):
             return False
 
         try:
-            if device_type == 'motor':
+            if device_type == 'servo':
+                return self._read_servo_parameters(device_id)
+            elif device_type == 'motor':
                 return self._read_motor_parameters(device_id)
+            elif device_type == 'dcmotor':
+                return self._read_dcmotor_parameters(device_id)
             else:
                 self.get_logger().info(f'Parameter reading not yet implemented for {device_type}')
                 return True  # Placeholder
@@ -693,6 +834,145 @@ class ParameterManager(Node):
             return False
 
         return True
+
+    def _update_dcmotor_config(self, device_id: int, param_name: str, value: Any) -> bool:
+        """Update DC motor configuration parameter"""
+        try:
+            # Get current config first
+            get_client = self.create_client(GetDCMotorConfig, '/dcmotor/get_config')
+            if not get_client.wait_for_service(timeout_sec=3.0):
+                self.get_logger().error('DC motor get config service not available')
+                return False
+
+            get_request = GetDCMotorConfig.Request()
+            get_request.motor_id = device_id
+
+            future = get_client.call_async(get_request)
+            rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+
+            if not future.result() or not future.result().success:
+                self.get_logger().error('Failed to get current DC motor config')
+                return False
+
+            config = future.result().config
+
+            # Update the specific parameter
+            param_mapping = {
+                'dc_speed_kp': 'speed_kp',
+                'dc_speed_ki': 'speed_ki',
+                'dc_speed_kd': 'speed_kd',
+                'dc_position_kp': 'position_kp',
+                'dc_position_ki': 'position_ki',
+                'dc_position_kd': 'position_kd',
+                'dc_max_speed_rad_s': 'max_speed_rad_s',
+                'dc_max_acceleration_rad_s2': 'max_acceleration_rad_s2',
+                'dc_use_position_limits': 'use_position_limits',
+                'dc_position_limit_min_rad': 'position_limit_min_rad',
+                'dc_position_limit_max_rad': 'position_limit_max_rad',
+                'dc_watchdog_timeout_ms': 'watchdog_timeout_ms',
+                'dc_control_mode': 'mode'
+            }
+
+            if param_name in param_mapping:
+                setattr(config, param_mapping[param_name], value)
+            else:
+                self.get_logger().warning(f'Unknown DC motor parameter: {param_name}')
+                return False
+
+            # Send updated config
+            set_client = self.create_client(SetDCMotorConfig, '/dcmotor/set_config')
+            if not set_client.wait_for_service(timeout_sec=3.0):
+                self.get_logger().error('DC motor set config service not available')
+                return False
+
+            set_request = SetDCMotorConfig.Request()
+            set_request.config = config
+
+            future = set_client.call_async(set_request)
+            rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+
+            result = future.result()
+            if result and result.success:
+                self.get_logger().info(f'Updated DC motor {device_id} parameter {param_name} = {value}')
+                return True
+            else:
+                error_msg = result.message if result else "Unknown error"
+                self.get_logger().error(f'Failed to update DC motor config: {error_msg}')
+                return False
+
+        except Exception as e:
+            self.get_logger().error(f'Error updating DC motor config: {str(e)}')
+            return False
+
+    def _read_servo_parameters(self, device_id: int) -> bool:
+        """Read servo parameters via ROS2 service"""
+        try:
+            # For now, servo parameter reading is not fully implemented in the interface
+            # Return True to avoid crashes, but log that it's not implemented
+            self.get_logger().info(f'Servo parameter reading for servo {device_id} - using default values')
+            return True
+        except Exception as e:
+            self.get_logger().error(f'Error reading servo parameters: {str(e)}')
+            return False
+
+    def _read_dcmotor_parameters(self, device_id: int) -> bool:
+        """Read DC motor parameters via ROS2 service"""
+        try:
+            client = self.create_client(GetDCMotorConfig, '/dcmotor/get_config')
+            if not client.wait_for_service(timeout_sec=3.0):
+                self.get_logger().error('DC motor config service not available')
+                return False
+
+            request = GetDCMotorConfig.Request()
+            request.motor_id = device_id
+
+            future = client.call_async(request)
+            rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+
+            result = future.result()
+            if not result or not result.success:
+                error_msg = result.message if result else "Unknown error"
+                self.get_logger().error(f'Failed to read DC motor config: {error_msg}')
+                return False
+
+            config = result.config
+
+            # Update local parameters with received config
+            device_key = f"dcmotor_{device_id}"
+            if device_key not in self.device_parameters:
+                self.get_logger().warning(f'DC motor {device_id} not found in local parameters')
+                return False
+
+            device_params = self.device_parameters[device_key]
+
+            # Map config fields to parameter names
+            param_mapping = {
+                'speed_kp': 'dc_speed_kp',
+                'speed_ki': 'dc_speed_ki',
+                'speed_kd': 'dc_speed_kd',
+                'position_kp': 'dc_position_kp',
+                'position_ki': 'dc_position_ki',
+                'position_kd': 'dc_position_kd',
+                'max_speed_rad_s': 'dc_max_speed_rad_s',
+                'max_acceleration_rad_s2': 'dc_max_acceleration_rad_s2',
+                'use_position_limits': 'dc_use_position_limits',
+                'position_limit_min_rad': 'dc_position_limit_min_rad',
+                'position_limit_max_rad': 'dc_position_limit_max_rad',
+                'watchdog_timeout_ms': 'dc_watchdog_timeout_ms',
+                'mode': 'dc_control_mode'
+            }
+
+            for config_field, param_name in param_mapping.items():
+                if hasattr(config, config_field) and param_name in device_params.parameters:
+                    device_params.parameters[param_name].value = getattr(config, config_field)
+
+            device_params.last_updated = time.time()
+            self.get_logger().info(f'Read DC motor {device_id} parameters successfully')
+            return True
+
+        except Exception as e:
+            self.get_logger().error(f'Error reading DC motor parameters: {str(e)}')
+            return False
 
 
 def main():
