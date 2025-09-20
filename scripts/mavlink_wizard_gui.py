@@ -1016,9 +1016,9 @@ class ServoControlWidget(QWidget):
 
         # PWM control
         self.pwm_spinbox = QSpinBox()
-        self.pwm_spinbox.setRange(1000, 2000)
+        self.pwm_spinbox.setRange(0, 2000)
         self.pwm_spinbox.setSuffix(" μs")
-        self.pwm_spinbox.setValue(1500)
+        self.pwm_spinbox.setValue(1000)
         control_layout.addRow("PWM Pulse Width:", self.pwm_spinbox)
 
         control_group.setLayout(control_layout)
@@ -1072,7 +1072,7 @@ class ServoControlWidget(QWidget):
 
         self.current_angle_label = QLabel("0.0°")
         self.target_angle_label = QLabel("0.0°")
-        self.pwm_value_label = QLabel("1500 μs")
+        self.pwm_value_label = QLabel("1000 μs")
         self.status_label = QLabel("Unknown")
 
         status_layout.addRow("Current Angle:", self.current_angle_label)
